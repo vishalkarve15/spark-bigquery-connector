@@ -374,6 +374,8 @@ public class BigQueryClient {
 
     String whereClause = createWhereClause(filters).map(clause -> "WHERE " + clause).orElse("");
 
+    System.out.println(
+        String.format("SELECT %s FROM `%s` %s", formattedQuery, tableName, whereClause));
     return String.format("SELECT %s FROM `%s` %s", formattedQuery, tableName, whereClause);
   }
 

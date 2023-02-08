@@ -154,6 +154,10 @@ public class BigQueryDataSourceReaderContext {
         SchemaConverters.toSpark(SchemaConverters.getSchemaWithPseudoColumns(table)));
   }
 
+  public void invalidateReadSession() {
+    this.readSessionResponse = Suppliers.memoize(this::createReadSession);
+  }
+
   public boolean enableBatchRead() {
     return readSessionCreatorConfig.getReadDataFormat() == DataFormat.ARROW && !isEmptySchema();
   }
@@ -164,6 +168,7 @@ public class BigQueryDataSourceReaderContext {
       return createEmptyProjectionPartitions();
     }
 
+    logger.info("readSession::planInputPartitionContexts");
     ReadSession readSession = readSessionResponse.get().getReadSession();
 
     return readSession.getStreamsList().stream()
@@ -191,6 +196,7 @@ public class BigQueryDataSourceReaderContext {
       throw new IllegalStateException("Batch reads should not be enabled");
     }
 
+    logger.info("readSession::planBatchInputPartitionContexts");
     ReadSession readSession = readSessionResponse.get().getReadSession();
 
     ImmutableList<String> tempSelectedFields = selectedFields.get();
@@ -269,10 +275,11 @@ public class BigQueryDataSourceReaderContext {
     Optional<String> filter = getCombinedFilter();
     ReadSessionResponse response = readSessionCreator.create(tableId, selectedFields.get(), filter);
     logger.info(
-        "Created read session for {}: {} for application id: {}",
+        "Created read session for {}: {} for application id: {}, selectedFields: {}",
         tableId.toString(),
         response.getReadSession().getName(),
-        applicationId);
+        applicationId,
+        selectedFields.get());
     return response;
   }
 
@@ -314,12 +321,15 @@ public class BigQueryDataSourceReaderContext {
   }
 
   public void pruneColumns(StructType requiredSchema) {
+    logger.info("In pruneColumns, for " + getFullTableName() + ", got : " + requiredSchema);
     this.schema = Optional.ofNullable(requiredSchema);
+    this.userProvidedSchema = schema;
   }
 
   public StatisticsContext estimateStatistics() {
     if (table.getDefinition().getType() == TableDefinition.Type.TABLE) {
       // Create StatisticsContext with infromation from read session response
+      logger.info("readSession::estimateStatistics");
       final long tableSizeInBytes =
           readSessionResponse.get().getReadSession().getEstimatedTotalBytesScanned();
       final long numRowsInTable = readSessionResponse.get().getReadSession().getEstimatedRowCount();

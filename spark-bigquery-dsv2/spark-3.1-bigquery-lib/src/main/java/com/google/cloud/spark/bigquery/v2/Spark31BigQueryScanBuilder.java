@@ -32,6 +32,8 @@ import org.apache.spark.sql.connector.read.SupportsPushDownRequiredColumns;
 import org.apache.spark.sql.connector.read.SupportsReportStatistics;
 import org.apache.spark.sql.sources.Filter;
 import org.apache.spark.sql.types.StructType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Both Scan and ScanBuilder implementation, otherwise estimateStatistics() is not called due to bug
@@ -46,6 +48,8 @@ public class Spark31BigQueryScanBuilder
         SupportsReportStatistics,
         SupportsQueryPushdown {
 
+  private static final Logger logger = LoggerFactory.getLogger(Spark31BigQueryScanBuilder.class);
+
   private BigQueryDataSourceReaderContext ctx;
   private InputPartition[] partitions;
 
@@ -59,6 +63,7 @@ public class Spark31BigQueryScanBuilder
 
   @Override
   public Scan build() {
+    logger.warn("building...");
     return this; // new BigQueryScan(ctx);
   }
 
@@ -74,7 +79,10 @@ public class Spark31BigQueryScanBuilder
 
   @Override
   public void pruneColumns(StructType requiredSchema) {
+    logger.warn("pruning columns...{}", requiredSchema);
     ctx.pruneColumns(requiredSchema);
+    logger.warn("invalidating session");
+    ctx.invalidateReadSession();
   }
 
   @Override
