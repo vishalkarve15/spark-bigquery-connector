@@ -154,7 +154,8 @@ public class BigQueryDataSourceReaderContext {
         SchemaConverters.toSpark(SchemaConverters.getSchemaWithPseudoColumns(table)));
   }
 
-  public void invalidateReadSession() {
+  private void invalidateReadSession() {
+    logger.warn("invalidating session");
     this.readSessionResponse = Suppliers.memoize(this::createReadSession);
   }
 
@@ -321,9 +322,14 @@ public class BigQueryDataSourceReaderContext {
   }
 
   public void pruneColumns(StructType requiredSchema) {
+    if (schema.isPresent() && schema.get().equals(requiredSchema)) {
+      logger.info("In NOOP pruneColumns, for " + getFullTableName() + ", got : " + requiredSchema);
+      return;
+    }
     logger.info("In pruneColumns, for " + getFullTableName() + ", got : " + requiredSchema);
     this.schema = Optional.ofNullable(requiredSchema);
     this.userProvidedSchema = schema;
+    this.invalidateReadSession();
   }
 
   public StatisticsContext estimateStatistics() {

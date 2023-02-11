@@ -81,8 +81,6 @@ public class Spark31BigQueryScanBuilder
   public void pruneColumns(StructType requiredSchema) {
     logger.warn("pruning columns...{}", requiredSchema);
     ctx.pruneColumns(requiredSchema);
-    logger.warn("invalidating session");
-    ctx.invalidateReadSession();
   }
 
   @Override
