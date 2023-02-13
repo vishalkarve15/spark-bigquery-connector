@@ -45,7 +45,6 @@ public class Spark31BigQueryScanBuilder
         ScanBuilder,
         SupportsPushDownFilters,
         SupportsPushDownRequiredColumns,
-        SupportsReportStatistics,
         SupportsQueryPushdown {
 
   private static final Logger logger = LoggerFactory.getLogger(Spark31BigQueryScanBuilder.class);
@@ -98,7 +97,6 @@ public class Spark31BigQueryScanBuilder
     return this;
   }
 
-  @Override
   public Statistics estimateStatistics() {
     return new Spark3Statistics(ctx.estimateStatistics());
   }
