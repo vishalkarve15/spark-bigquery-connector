@@ -205,6 +205,7 @@ public class BigQueryDataSourceReaderContext {
     if (!enableBatchRead()) {
       throw new IllegalStateException("Batch reads should not be enabled");
     }
+    logger.warn("{}::planBatchInputPartitionContexts", getTableName());
 
     ReadSession readSession = readSessionResponse.get().getReadSession();
 
@@ -290,7 +291,7 @@ public class BigQueryDataSourceReaderContext {
             .orElse(ImmutableList.copyOf(fields.keySet()));
     Optional<String> filter = getCombinedFilter();
     ReadSessionResponse response = readSessionCreator.create(tableId, selectedFields, filter);
-    logger.info(
+    logger.warn(
         "Got read session for {}: {} for application id: {}",
         tableId.toString(),
         response.getReadSession().getName(),
@@ -409,6 +410,7 @@ public class BigQueryDataSourceReaderContext {
   }
 
   public StatisticsContext estimateStatistics() {
+    logger.warn("{}::estimateStatistics", getTableName());
     if (table.getDefinition().getType() == TableDefinition.Type.TABLE) {
       // Create StatisticsContext with infromation from read session response
       final long tableSizeInBytes =

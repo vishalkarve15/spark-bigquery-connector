@@ -183,7 +183,7 @@ public class ReadSessionCreator {
       jsonObject.addProperty(
           "readSessionDuration",
           Duration.between(sessionPrepStartTime, sessionCreationEndTime).toMillis());
-      log.info("Read session:{}", new Gson().toJson(jsonObject));
+      log.warn("Read session:{}", new Gson().toJson(jsonObject));
       if (readSession.getStreamsCount() != maxStreamCount) {
         log.info(
             "Requested {} max partitions, but only received {} "
