@@ -111,7 +111,10 @@ public class BigQueryDataSourceReaderContext {
   // "planBatchInputPartitionContexts" or
   // "planInputPartitionContexts". We will use this to get table statistics in estimateStatistics.
   private Supplier<ReadSessionResponse> readSessionResponse;
+  private Supplier<StatisticsContext> statisticsResponse;
   private final ExecutorService asyncReadSessionExecutor = Executors.newSingleThreadExecutor();
+  private final ExecutorService asyncStatsExecutor = Executors.newSingleThreadExecutor();
+
 
   public BigQueryDataSourceReaderContext(
       TableInfo table,
@@ -158,6 +161,7 @@ public class BigQueryDataSourceReaderContext {
 
   private void resetReadSessionResponse() {
     this.readSessionResponse = Suppliers.memoize(this::createReadSession);
+    this.statisticsResponse = Suppliers.memoize(this::createDryRunStatistics);
   }
 
   public StructType readSchema() {
@@ -299,6 +303,36 @@ public class BigQueryDataSourceReaderContext {
     return response;
   }
 
+  private StatisticsContext createDryRunStatistics() {
+    selectedFields =
+        schema
+            .map(requiredSchema -> ImmutableList.copyOf(requiredSchema.fieldNames()))
+            .orElse(ImmutableList.copyOf(fields.keySet()));
+    Optional<String> filter = getCombinedFilter();
+    Long[] stats = readSessionCreator.getStatistics(tableId, selectedFields, filter);
+    logger.warn(
+        "Created statistics for {} for application id: {} : {}", tableId.toString(), applicationId, stats[0]);
+    return new StatisticsContext() {
+      @Override
+      public OptionalLong sizeInBytes() {
+        if (stats[0] == null) {
+          return OptionalLong.empty();
+        } else {
+          return OptionalLong.of(stats[0]);
+        }
+      }
+
+      @Override
+      public OptionalLong numRows() {
+        if (stats[1] == null) {
+          return OptionalLong.empty();
+        } else {
+          return OptionalLong.of(stats[1]);
+        }
+      }
+    };
+  }
+
   Stream<InputPartitionContext<InternalRow>> createEmptyProjectionPartitions() {
     Optional<String> filter = getCombinedFilter();
     long rowCount = bigQueryClient.calculateTableSize(tableId, filter);
@@ -411,7 +445,8 @@ public class BigQueryDataSourceReaderContext {
 
   public StatisticsContext estimateStatistics() {
     logger.warn("{}::estimateStatistics", getTableName());
-    if (table.getDefinition().getType() == TableDefinition.Type.TABLE) {
+    if (table.getDefinition().getType() == TableDefinition.Type.TABLE ||
+        table.getDefinition().getType() == TableDefinition.Type.EXTERNAL) {
       // Create StatisticsContext with infromation from read session response
       final long tableSizeInBytes =
           readSessionResponse.get().getReadSession().getEstimatedTotalBytesScanned();
@@ -430,7 +465,7 @@ public class BigQueryDataSourceReaderContext {
             }
           };
 
-      return tableStatisticsContext;
+      return statisticsResponse.get();
     } else {
       return UNKNOWN_STATISTICS;
     }
@@ -459,6 +494,8 @@ public class BigQueryDataSourceReaderContext {
   public void build() {
     // Supplier provided by Suppliers.memoize is thread-safe
     asyncReadSessionExecutor.submit(() -> readSessionResponse.get());
+    asyncStatsExecutor.submit(() -> statisticsResponse.get());
     asyncReadSessionExecutor.shutdown();
+    asyncStatsExecutor.shutdown();
   }
 }

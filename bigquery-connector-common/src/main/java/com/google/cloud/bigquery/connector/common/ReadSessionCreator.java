@@ -18,6 +18,10 @@ package com.google.cloud.bigquery.connector.common;
 import static com.google.cloud.bigquery.connector.common.BigQueryErrorCode.UNSUPPORTED;
 import static java.lang.String.format;
 
+import com.google.cloud.bigquery.Job;
+import com.google.cloud.bigquery.JobInfo;
+import com.google.cloud.bigquery.JobStatistics;
+import com.google.cloud.bigquery.QueryJobConfiguration;
 import com.google.cloud.bigquery.TableDefinition;
 import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.TableInfo;
@@ -198,6 +202,27 @@ public class ReadSessionCreator {
     }
 
     return new ReadSessionResponse(readSession, actualTable);
+  }
+
+  public Long[] getStatistics(
+      TableId table, ImmutableList<String> requiredColumns, Optional<String> filter) {
+    Instant startTime = Instant.now();
+    String[] filters = filter.map(Stream::of).orElseGet(Stream::empty).toArray(String[]::new);
+    String query = bigQueryClient.createSql(table, requiredColumns, filters);
+    log.warn("running query: {}", query);
+    QueryJobConfiguration queryConfig =
+        QueryJobConfiguration.newBuilder(query).setDryRun(true).setUseQueryCache(false).build();
+    Job job = bigQueryClient.create(JobInfo.of(queryConfig));
+    JobStatistics.QueryStatistics statistics = job.getStatistics();
+    log.warn(
+        "Estimated: {}, total: {}, total billed: {}",
+        statistics.getEstimatedBytesProcessed(),
+        statistics.getTotalBytesProcessed(),
+        statistics.getTotalBytesBilled());
+    log.warn("Dml affected rows: {}", statistics.getNumDmlAffectedRows());
+    log.warn(
+        "Time taken for statistics: {}", Duration.between(startTime, Instant.now()).toMillis());
+    return new Long[] {statistics.getTotalBytesProcessed(), null};
   }
 
   static String toTablePath(TableId tableId) {
