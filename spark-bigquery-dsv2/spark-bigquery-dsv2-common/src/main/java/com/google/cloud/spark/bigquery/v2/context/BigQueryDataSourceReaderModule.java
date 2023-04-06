@@ -15,8 +15,10 @@
  */
 package com.google.cloud.spark.bigquery.v2.context;
 
+import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.TableInfo;
 import com.google.cloud.bigquery.connector.common.BigQueryClient;
+import com.google.cloud.bigquery.connector.common.BigQueryClient.ReadTableOptions;
 import com.google.cloud.bigquery.connector.common.BigQueryClientFactory;
 import com.google.cloud.bigquery.connector.common.BigQueryTracerFactory;
 import com.google.cloud.spark.bigquery.SparkBigQueryConfig;
@@ -56,8 +58,11 @@ public class BigQueryDataSourceReaderModule implements Module {
       SparkSession sparkSession) {
     SparkBigQueryConfig config = tableScanConfig.orElse(globalConfig);
     TableInfo tableInfo = bigQueryClient.getReadTable(config.toReadTableOptions());
+    ReadTableOptions bqOptions = createBqOptions(tableInfo);
+    TableInfo bqTableInfo = bigQueryClient.getReadTable(bqOptions);
     return new BigQueryDataSourceReaderContext(
         tableInfo,
+        bqTableInfo,
         bigQueryClient,
         bigQueryReadClientFactory,
         tracerFactory,
@@ -67,5 +72,34 @@ public class BigQueryDataSourceReaderModule implements Module {
         sparkSession.sparkContext().applicationId(),
         config,
         sparkSession.sqlContext());
+  }
+
+  private ReadTableOptions createBqOptions(TableInfo tableInfo) {
+    return new ReadTableOptions() {
+      @Override
+      public TableId tableId() {
+        return TableId.of("tpcds_1T_partitioned_clustered", tableInfo.getTableId().getTable());
+      }
+
+      @Override
+      public Optional<String> query() {
+        return Optional.empty();
+      }
+
+      @Override
+      public boolean viewsEnabled() {
+        return false;
+      }
+
+      @Override
+      public String viewEnabledParamName() {
+        return null;
+      }
+
+      @Override
+      public int expirationTimeInMinutes() {
+        return 0;
+      }
+    };
   }
 }

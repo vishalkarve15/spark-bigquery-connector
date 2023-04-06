@@ -85,6 +85,7 @@ public class BigQueryDataSourceReaderContext {
       };
 
   private final TableInfo table;
+  private final TableInfo bqTable;
   private final TableId tableId;
   private final ReadSessionCreatorConfig readSessionCreatorConfig;
   private final BigQueryClient bigQueryClient;
@@ -115,9 +116,9 @@ public class BigQueryDataSourceReaderContext {
   private final ExecutorService asyncReadSessionExecutor = Executors.newSingleThreadExecutor();
   private final ExecutorService asyncStatsExecutor = Executors.newSingleThreadExecutor();
 
-
   public BigQueryDataSourceReaderContext(
       TableInfo table,
+      TableInfo bqTable,
       BigQueryClient bigQueryClient,
       BigQueryClientFactory bigQueryReadClientFactory,
       BigQueryTracerFactory tracerFactory,
@@ -128,6 +129,7 @@ public class BigQueryDataSourceReaderContext {
       SparkBigQueryConfig options,
       SQLContext sqlContext) {
     this.table = table;
+    this.bqTable = bqTable;
     this.tableId = table.getTableId();
     this.readSessionCreatorConfig = readSessionCreatorConfig;
     this.bigQueryClient = bigQueryClient;
@@ -309,9 +311,12 @@ public class BigQueryDataSourceReaderContext {
             .map(requiredSchema -> ImmutableList.copyOf(requiredSchema.fieldNames()))
             .orElse(ImmutableList.copyOf(fields.keySet()));
     Optional<String> filter = getCombinedFilter();
-    Long[] stats = readSessionCreator.getStatistics(tableId, selectedFields, filter);
+    Long[] stats = readSessionCreator.getStatistics(bqTable.getTableId(), selectedFields, filter);
     logger.warn(
-        "Created statistics for {} for application id: {} : {}", tableId.toString(), applicationId, stats[0]);
+        "Created statistics for {} for application id: {} : {}",
+        bqTable.getTableId(),
+        applicationId,
+        stats[0]);
     return new StatisticsContext() {
       @Override
       public OptionalLong sizeInBytes() {
@@ -385,14 +390,14 @@ public class BigQueryDataSourceReaderContext {
 
     ImmutableList<Filter> newFilters =
         SparkBigQueryUtil.extractPartitionAndClusteringFilters(
-            table, ImmutableList.copyOf(filters));
+            bqTable, ImmutableList.copyOf(filters));
     if (newFilters.isEmpty()) {
       // no partitioning and no clustering, this is probably a dimension table.
       // It means the filter combined filter won't change, so no need to create another read session
       // we are done here.
       logger.info(
           "Could not find filters for partition of clustering field for table {}, aborting DPP filter",
-          BigQueryUtil.friendlyTableName(tableId));
+          BigQueryUtil.friendlyTableName(bqTable.getTableId()));
       return;
     }
     pushedFilters =
@@ -445,25 +450,12 @@ public class BigQueryDataSourceReaderContext {
 
   public StatisticsContext estimateStatistics() {
     logger.warn("{}::estimateStatistics", getTableName());
-    if (table.getDefinition().getType() == TableDefinition.Type.TABLE ||
-        table.getDefinition().getType() == TableDefinition.Type.EXTERNAL) {
+    if (table.getDefinition().getType() == TableDefinition.Type.TABLE
+        || table.getDefinition().getType() == TableDefinition.Type.EXTERNAL) {
       // Create StatisticsContext with infromation from read session response
       final long tableSizeInBytes =
           readSessionResponse.get().getReadSession().getEstimatedTotalBytesScanned();
       final long numRowsInTable = readSessionResponse.get().getReadSession().getEstimatedRowCount();
-
-      StatisticsContext tableStatisticsContext =
-          new StatisticsContext() {
-            @Override
-            public OptionalLong sizeInBytes() {
-              return OptionalLong.of(tableSizeInBytes);
-            }
-
-            @Override
-            public OptionalLong numRows() {
-              return OptionalLong.of(numRowsInTable);
-            }
-          };
 
       return statisticsResponse.get();
     } else {
@@ -488,7 +480,7 @@ public class BigQueryDataSourceReaderContext {
   }
 
   public TableInfo getTableInfo() {
-    return this.table;
+    return this.bqTable;
   }
 
   public void build() {
